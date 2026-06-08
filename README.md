@@ -12,7 +12,7 @@
 
 ## 🎯 Задача
 
-Фрилансер тратит часы ежедневно на ручной мониторинг десятков Telegram-чатов в поисках заказов на инфографику, карточки товаров и копирайтинг. Большинство заявок теряется — другой исполнитель отвечает быстрее.
+Фрилансер тратит часы ежедневно на ручной мониторинг десятков Telegram-чатов в поисках заказов. Большинство заявок теряется — другой исполнитель отвечает быстрее.
 
 **Решение:** двухуровневый AI-пайплайн, который слушает чаты в реальном времени, классифицирует сообщения через LLM и доставляет только квалифицированные лиды с извлечёнными деталями. При получении лида достаточно ответить `+` — парсер автоматически отправит оффер заказчику.
 
@@ -51,6 +51,62 @@ Telegram Chats (9+ каналов)
 └─────────────────────────┘
 
 + aiohttp health-check → UptimeRobot keep-alive → 24/7 бесплатно
+```
+
+## 🗺 System Diagram
+
+```mermaid
+flowchart TD
+    TG["📢 Telegram Channels
+9 public chats"]
+    TL["👂 Telethon Listener
+real-time NewMessage events"]
+    KF["⚡ Keyword Pre-filter
+65 keywords · 32 stop-words
+~0ms · no API call"]
+    LC["🧠 LLM Classifier
+Groq / LLaMA-3.3-70b
+structured JSON output
+temperature=0.1"]
+    GR["🔄 GroqRotatingClient
+3 API keys
+auto-rotate on 429"]
+    NT["📨 Telegram Notifier
+personal DM + channel"]
+    US["👤 User"]
+    AO["⚡ Auto-offer
+random offer rotator"]
+    WS["🌐 aiohttp Web Server
+GET /health"]
+    UR["🤖 UptimeRobot
+pings every 5 min"]
+
+    TG -->|NewMessage event| TL
+    TL -->|raw text| KF
+    KF -->|no keyword match| SKIP["🗑 Dropped"]
+    KF -->|keyword hit| LC
+    LC <-->|API call| GR
+    LC -->|is_lead=false| SKIP2["🗑 Dropped"]
+    LC -->|is_lead=true
+confidence ≥ MIN_CONFIDENCE| NT
+    NT -->|formatted lead + sender ID| US
+    US -->|reply +| AO
+    AO -->|random offer| TG2["📩 Direct message
+to client"]
+
+    WS -->|200 OK| UR
+    UR -->|ping every 5m| WS
+
+    style TG fill:#2563eb,color:#fff
+    style LC fill:#7c3aed,color:#fff
+    style GR fill:#7c3aed,color:#fff
+    style NT fill:#059669,color:#fff
+    style AO fill:#059669,color:#fff
+    style KF fill:#d97706,color:#fff
+    style SKIP fill:#6b7280,color:#fff
+    style SKIP2 fill:#6b7280,color:#fff
+    style UR fill:#dc2626,color:#fff
+    style WS fill:#0891b2,color:#fff
 ```
 
 **Ключевое архитектурное решение — двухуровневая фильтрация.** Keyword-фильтр работает локально без API-запросов. Это снижает количество LLM-вызовов и уменьшает задержку для нерелевантных сообщений до нуля.
